@@ -28,7 +28,24 @@ const (
 	// Otherwise, update it to the latest known commit during release.
 	// The SDK image build pre-caches this version (.dagger/modules/engine-dev/build/sdk.go).
 	goSDKLibVersion = "f70383e0aa389216628d304482664359300c9be1" // v1.0.0-beta.12
+
+	// goSDKOfflineEnv, when set to any non-empty value on the engine container,
+	// omits --lib-version from codegen calls. That makes the Go codegen treat
+	// LibVersion as empty: it skips the `go get dagger.io/dagger@<commit>` step
+	// and drops the require from the generated go.mod, so module init/develop
+	// works without network access to dagger.io.
+	goSDKOfflineEnv = "DAGGER_GO_SDK_OFFLINE"
 )
+
+// goSDKLibVersionArgs returns the --lib-version arg pair for codegen, unless
+// the offline env var is set, in which case it returns nil so codegen treats
+// LibVersion as empty.
+func goSDKLibVersionArgs() dagql.ArrayInput[dagql.String] {
+	if os.Getenv(goSDKOfflineEnv) != "" {
+		return nil
+	}
+	return dagql.ArrayInput[dagql.String]{"--lib-version", dagql.String(goSDKLibVersion)}
+}
 
 /*
 goSDK is the one special sdk not implemented as module, instead the
@@ -560,8 +577,8 @@ func (sdk *goSDK) baseWithCodegen(
 		"--module-source-path", dagql.String(filepath.Join(goSDKUserModContextDirPath, srcSubpath)),
 		"--module-name", dagql.String(modName),
 		"--introspection-json-path", goSDKIntrospectionJSONPath,
-		"--lib-version", dagql.String(goSDKLibVersion),
 	}
+	codegenArgs = append(codegenArgs, goSDKLibVersionArgs()...)
 	if !src.Self().ConfigExists {
 		codegenArgs = append(codegenArgs, "--is-init")
 	}
