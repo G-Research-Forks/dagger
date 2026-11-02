@@ -1122,20 +1122,21 @@ func (c *Client) setProxyEnvs(_ context.Context, state *execState) error {
 		}
 	}
 
-	if state.execMD == nil {
-		return nil
-	}
-
+	// pass every _DAGGER_ENGINE_SYSTEMENV_<NAME> set on the engine through to
+	// the container as <NAME>, e.g. GOPROXY or UV_DEFAULT_INDEX for engines that
+	// must use internal mirrors, so module code not under the user's control
+	// picks them up too
 	const systemEnvPrefix = "_DAGGER_ENGINE_SYSTEMENV_"
-	for _, systemEnvName := range state.execMD.SystemEnvNames {
+	for _, kv := range os.Environ() {
+		systemEnvName, systemVal, _ := strings.Cut(strings.TrimPrefix(kv, systemEnvPrefix), "=")
+		if !strings.HasPrefix(kv, systemEnvPrefix) || systemEnvName == "" {
+			continue
+		}
 		if _, ok := state.origEnvMap[systemEnvName]; ok {
 			// don't overwrite explicit user-provided values
 			continue
 		}
-		systemVal, ok := os.LookupEnv(systemEnvPrefix + systemEnvName)
-		if ok {
-			state.spec.Process.Env = append(state.spec.Process.Env, systemEnvName+"="+systemVal)
-		}
+		state.spec.Process.Env = append(state.spec.Process.Env, systemEnvName+"="+systemVal)
 	}
 
 	return nil
